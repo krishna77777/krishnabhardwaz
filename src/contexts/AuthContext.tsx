@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (sessionError) {
           console.error('Session error:', sessionError);
         } else if (session?.user && mounted) {
-          await fetchUserProfile(session.user.id);
+          setUser(session.user);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted || !initialized) return;
 
         if (event === 'SIGNED_IN' && session?.user) {
-          await fetchUserProfile(session.user.id);
+          setUser(session.user);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
