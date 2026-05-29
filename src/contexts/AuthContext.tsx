@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
-import type { User, Session } from '@supabase/supabase-js';
 
 interface UserProfile {
   id: string;
@@ -21,6 +20,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -31,18 +31,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (sessionError) {
           console.error('Session error:', sessionError);
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        if (session?.user && mounted) {
+        } else if (session?.user && mounted) {
           await fetchUserProfile(session.user.id);
         }
-
-        if (mounted) setLoading(false);
       } catch (error) {
         console.error('Auth initialization error:', error);
-        if (mounted) setLoading(false);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          setInitialized(true);
+        }
       }
     };
 
@@ -50,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return;
+        if (!mounted || !initialized) return;
 
         if (event === 'SIGNED_IN' && session?.user) {
           await fetchUserProfile(session.user.id);
@@ -66,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [initialized]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
