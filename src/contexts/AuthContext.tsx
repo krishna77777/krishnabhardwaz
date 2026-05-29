@@ -1,10 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../utils/supabase';
 
 interface User {
   id: string;
@@ -52,14 +47,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('id, email, name')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('id, email, name')
+            .eq('id', session.user.id)
+            .maybeSingle();
 
-        if (profile) {
-          setUser(profile);
+          if (profile) {
+            setUser(profile);
+          }
+        } catch (error) {
+          console.error('Error fetching profile:', error);
         }
       } else {
         setUser(null);
@@ -72,9 +71,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return { error: error?.message || null };
+      if (error) {
+        return { error: error.message };
+      }
+      return { error: null };
     } catch (err) {
-      return { error: 'Login failed. Please try again.' };
+      const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      return { error: errorMessage };
     }
   };
 
@@ -107,13 +110,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { error: null };
     } catch (err) {
-      return { error: 'Registration failed. Please try again.' };
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      return { error: errorMessage };
     }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (

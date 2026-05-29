@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CheckCircle, XCircle, ChevronRight, RotateCcw, BookOpen, Lock, CreditCard } from 'lucide-react';
 import { historyQuestions, geographyQuestions, lucentSubjectWiseQuestions, ghatnachakraQuestions } from '../data/questions';
-import { useAuth, supabase } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../utils/supabase';
 
 interface PaidTestPageProps {
   onBack: () => void;
