@@ -1,21 +1,26 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please check your .env file contains:\n' +
-    'VITE_SUPABASE_URL=your_url\n' +
-    'VITE_SUPABASE_ANON_KEY=your_key'
-  );
+// Validate environment variables
+if (!supabaseUrl) {
+  throw new Error('VITE_SUPABASE_URL is missing from environment variables');
 }
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+if (!supabaseAnonKey) {
+  throw new Error('VITE_SUPABASE_ANON_KEY is missing from environment variables');
+}
+
+// Ensure URL doesn't have trailing slash
+const cleanUrl = supabaseUrl.endsWith('/') ? supabaseUrl.slice(0, -1) : supabaseUrl;
+
+export const supabase = createClient(cleanUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    flowType: 'pkce',
   },
 });

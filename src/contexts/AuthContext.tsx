@@ -1,14 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
+import type { User, Session } from '@supabase/supabase-js';
 
-interface User {
+interface UserProfile {
   id: string;
   email: string;
   name: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   register: (name: string, email: string, password: string) => Promise<{ error: string | null }>;
@@ -18,78 +19,81 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initAuth = async () => {
+    let mounted = true;
+
+    const initializeAuth = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) {
           console.error('Session error:', sessionError);
-          setLoading(false);
+          if (mounted) setLoading(false);
           return;
         }
 
-        if (session?.user) {
-          try {
-            const { data: profile, error: profileError } = await supabase
-              .from('user_profiles')
-              .select('id, email, name')
-              .eq('id', session.user.id)
-              .maybeSingle();
-
-            if (profileError) {
-              console.error('Profile fetch error:', profileError);
-            } else if (profile) {
-              setUser(profile);
-            }
-          } catch (error) {
-            console.error('Profile fetch exception:', error);
-          }
+        if (session?.user && mounted) {
+          await fetchUserProfile(session.user.id);
         }
+
+        if (mounted) setLoading(false);
       } catch (error) {
-        console.error('Auth init error:', error);
-      } finally {
-        setLoading(false);
+        console.error('Auth initialization error:', error);
+        if (mounted) setLoading(false);
       }
     };
 
-    initAuth();
+    initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
 
-      if (session?.user) {
-        try {
-          const { data: profile, error: profileError } = await supabase
-            .from('user_profiles')
-            .select('id, email, name')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-          if (profileError) {
-            console.error('Profile fetch error on auth change:', profileError);
-          } else if (profile) {
-            setUser(profile);
-          }
-        } catch (error) {
-          console.error('Error fetching profile on auth change:', error);
+        if (event === 'SIGNED_IN' && session?.user) {
+          await fetchUserProfile(session.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          await fetchUserProfile(session.user.id);
         }
-      } else {
-        setUser(null);
       }
-    });
+    );
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
   }, []);
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id, email, name')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        return;
+      }
+
+      if (profile) {
+        setUser(profile);
+      }
+    } catch (error) {
+      console.error('Profile fetch exception:', error);
+    }
+  };
 
   const login = async (email: string, password: string) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+        email: email.trim().toLowerCase(),
+        password: password,
       });
 
       if (error) {
@@ -97,56 +101,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: error.message };
       }
 
-      if (!data.session) {
-        console.error('No session returned');
-        return { error: 'Login failed. No session created.' };
+      if (!data.session || !data.user) {
+        return { error: 'Login failed. Please try again.' };
       }
 
+      await fetchUserProfile(data.user.id);
       return { error: null };
     } catch (err) {
       console.error('Login exception:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       return { error: errorMessage };
     }
   };
 
   const register = async (name: string, email: string, password: string) => {
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password: password,
         options: {
+          data: {
+            name: name.trim(),
+          },
           emailRedirectTo: undefined,
         },
       });
 
-      if (authError) {
-        console.error('Signup error:', authError);
-        return { error: authError.message };
+      if (error) {
+        console.error('Registration error:', error);
+        return { error: error.message };
       }
 
-      if (!authData.user) {
-        console.error('No user returned from signup');
+      if (!data.user) {
         return { error: 'Registration failed. Please try again.' };
       }
 
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
-          id: authData.user.id,
-          email: email.trim(),
+          id: data.user.id,
+          email: email.trim().toLowerCase(),
           name: name.trim(),
         });
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        return { error: profileError.message };
+        await supabase.auth.signOut();
+        return { error: 'Failed to create user profile. Please try again.' };
       }
 
       return { error: null };
     } catch (err) {
       console.error('Registration exception:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       return { error: errorMessage };
     }
   };
