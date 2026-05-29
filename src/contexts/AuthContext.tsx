@@ -123,7 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data: {
             name: name.trim(),
           },
-          emailRedirectTo: undefined,
         },
       });
 
