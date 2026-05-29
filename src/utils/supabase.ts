@@ -21,6 +21,5 @@ export const supabase = createClient(cleanUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: false,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    flowType: 'pkce',
   },
 });
