@@ -142,6 +142,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
         .from('questions')
         .select('*')
         .eq('category', 'paid_test')
+        .eq('subject', subjectName);
 
       if (error) {
         console.error('Error loading questions:', error);
