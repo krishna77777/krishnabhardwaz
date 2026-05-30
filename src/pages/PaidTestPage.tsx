@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, XCircle, ChevronRight, RotateCcw, BookOpen, Lock, CreditCard } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, ChevronRight, RotateCcw, BookOpen, Lock, CreditCard, Clock, ChevronUp, ChevronDown, Check, X } from 'lucide-react';
 import { historyQuestions, geographyQuestions, lucentSubjectWiseQuestions, ghatnachakraQuestions } from '../data/questions';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../utils/supabase';
@@ -18,13 +18,16 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   const [ghatnachakraSubject, setGhatnachakraSubject] = useState<GhatnachakraSubject | null>(null);
   const [currentQ, setCurrentQ] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
-  const [answered, setAnswered] = useState(false);
+  const [answered, setAnswered] = useState<Record<number, number>>({});
   const [score, setScore] = useState(0);
   const [purchasedTests, setPurchasedTests] = useState<{ lucent: boolean; ghatnachakra: boolean }>({ lucent: false, ghatnachakra: false });
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaidTest, setSelectedPaidTest] = useState<'lucent' | 'ghatnachakra' | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const { user } = useAuth();
 
   // Check purchased tests
@@ -52,6 +55,30 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     checkPurchases();
   }, [user]);
 
+  // Timer logic
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (quizStarted && timeLeft > 0 && !showResults) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setShowResults(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [quizStarted, timeLeft, showResults]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Get questions based on current subject
   const getQuestions = () => {
     if (subject === 'history') return historyQuestions;
@@ -63,28 +90,56 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
   const questions = getQuestions();
 
-  const handleSelect = (index: number) => {
-    if (answered) return;
-    setSelected(index);
-    setAnswered(true);
-    if (index === questions[currentQ].correct) {
+  const handleSelect = (questionIndex: number, answerIndex: number) => {
+    if (showResults) return;
+    if (answered[questionIndex] !== undefined) return;
+
+    const newAnswered = { ...answered, [questionIndex]: answerIndex };
+    setAnswered(newAnswered);
+
+    if (answerIndex === questions[questionIndex].correct) {
       setScore((s) => s + 1);
     }
   };
 
   const handleNext = () => {
     if (currentQ < questions.length - 1) {
-      setCurrentQ((q) => q + 1);
-      setSelected(null);
-      setAnswered(false);
+      setCurrentQ(currentQ + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentQ > 0) {
+      setCurrentQ(currentQ - 1);
     }
   };
 
   const handleRestart = () => {
     setCurrentQ(0);
-    setSelected(null);
-    setAnswered(false);
+    setAnswered({});
     setScore(0);
+    setTimeLeft(300);
+    setShowResults(false);
+    setQuizStarted(false);
+  };
+
+  const startQuiz = () => {
+    setQuizStarted(true);
+    setTimeLeft(300);
+  };
+
+  const handleSubmit = () => {
+    setShowResults(true);
+  };
+
+  const calculateScore = () => {
+    return Object.keys(answered).reduce((acc, key) => {
+      const qIndex = parseInt(key);
+      if (answered[qIndex] === questions[qIndex].correct) {
+        return acc + 1;
+      }
+      return acc;
+    }, 0);
   };
 
   const handlePayment = async (testType: 'lucent' | 'ghatnachakra') => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import HomePage from './pages/HomePage';
 import PaidTestPage from './pages/PaidTestPage';
+import FreeTestPage from './pages/FreeTestPage';
 import MyPurchasePage from './pages/MyPurchasePage';
 import AIPage from './pages/AIPage';
 import LivePage from './pages/LivePage';
@@ -10,7 +11,7 @@ import RegisterPage from './pages/RegisterPage';
 import BottomNav from './components/BottomNav';
 import { useAuth } from './contexts/AuthContext';
 
-type Page = 'home' | 'paid-test' | 'free-quiz' | 'current-affairs' | 'notes-pdf' | 'about' | 'my-purchase' | 'ai' | 'live';
+type Page = 'home' | 'paid-test' | 'free-test' | 'free-quiz' | 'current-affairs' | 'notes-pdf' | 'about' | 'my-purchase' | 'ai' | 'live' | 'mock-test' | 'practice-set' | 'previous-year' | 'profile';
 type AuthPage = 'login' | 'register';
 
 const bottomNavPages: Page[] = ['home', 'my-purchase', 'ai', 'live'];
@@ -33,7 +34,6 @@ export default function App() {
 
   const showBottomNav = bottomNavPages.includes(page);
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 flex items-center justify-center">
@@ -48,7 +48,6 @@ export default function App() {
     );
   }
 
-  // Not logged in - show auth pages
   if (!user) {
     if (authPage === 'login') {
       return <LoginPage onSwitchToRegister={() => setAuthPage('register')} />;
@@ -56,7 +55,6 @@ export default function App() {
     return <RegisterPage onSwitchToLogin={() => setAuthPage('login')} />;
   }
 
-  // Logged in - show app pages
   if (page === 'home') {
     return (
       <HomePage
@@ -98,11 +96,19 @@ export default function App() {
     return <PaidTestPage onBack={goHome} />;
   }
 
+  if (page === 'free-test') {
+    return <FreeTestPage onBack={goHome} />;
+  }
+
   const titleMap: Record<string, string> = {
     'free-quiz': 'Free Quiz',
     'current-affairs': 'Current Affairs',
     'notes-pdf': 'Notes PDF',
     'about': 'About App',
+    'mock-test': 'Mock Tests',
+    'practice-set': 'Practice Sets',
+    'previous-year': 'Previous Year Papers',
+    'profile': 'My Profile',
   };
 
   return <PlaceholderPage title={titleMap[page] || 'Page'} onBack={goHome} />;
