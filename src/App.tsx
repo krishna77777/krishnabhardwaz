@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import HomePage from './pages/HomePage';
 import PaidTestPage from './pages/PaidTestPage';
 import FreeTestPage from './pages/FreeTestPage';
+import ProfilePage from './pages/ProfilePage';
 import MyPurchasePage from './pages/MyPurchasePage';
 import AIPage from './pages/AIPage';
 import LivePage from './pages/LivePage';
@@ -100,6 +101,10 @@ export default function App() {
     return <FreeTestPage onBack={goHome} />;
   }
 
+  if (page === 'profile') {
+    return <ProfilePage onBack={goHome} />;
+  }
+
   const titleMap: Record<string, string> = {
     'free-quiz': 'Free Quiz',
     'current-affairs': 'Current Affairs',
@@ -108,7 +113,6 @@ export default function App() {
     'mock-test': 'Mock Tests',
     'practice-set': 'Practice Sets',
     'previous-year': 'Previous Year Papers',
-    'profile': 'My Profile',
   };
 
   return <PlaceholderPage title={titleMap[page] || 'Page'} onBack={goHome} />;

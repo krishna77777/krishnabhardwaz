@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, ChevronUp, ChevronDown, Check, X } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface FreeTestPageProps {
   onBack: () => void;
@@ -62,6 +61,8 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
   const [showResults, setShowResults] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [quizStarted, setQuizStarted] = useState(false);
+  const [swipeState, setSwipeState] = useState({ startY: 0, currentY: 0, isSwiping: false });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const questions = [
     {
@@ -113,6 +114,55 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
     return () => clearInterval(timer);
   }, [quizStarted, timeLeft, showResults]);
 
+  // Swipe handlers
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !showQuiz || showResults || !quizStarted) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      setSwipeState({
+        startY: e.touches[0].clientY,
+        currentY: e.touches[0].clientY,
+        isSwiping: true,
+      });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!swipeState.isSwiping) return;
+      setSwipeState((prev) => ({
+        ...prev,
+        currentY: e.touches[0].clientY,
+      }));
+    };
+
+    const handleTouchEnd = () => {
+      if (!swipeState.isSwiping) return;
+
+      const diff = swipeState.startY - swipeState.currentY;
+      const threshold = 50;
+
+      if (Math.abs(diff) > threshold) {
+        if (diff > 0 && currentQuestion < questions.length - 1) {
+          setCurrentQuestion(currentQuestion + 1);
+        } else if (diff < 0 && currentQuestion > 0) {
+          setCurrentQuestion(currentQuestion - 1);
+        }
+      }
+
+      setSwipeState({ startY: 0, currentY: 0, isSwiping: false });
+    };
+
+    container.addEventListener('touchstart', handleTouchStart);
+    container.addEventListener('touchmove', handleTouchMove);
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [swipeState, currentQuestion, questions.length, showQuiz, showResults, quizStarted]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -121,16 +171,16 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
 
   const startQuiz = () => {
     setQuizStarted(true);
-    setTimeLeft(300); // 5 minutes
+    setTimeLeft(300);
   };
 
   const handleAnswer = (questionIndex: number, answerIndex: number) => {
-    if (!showResults) {
-      setSelectedAnswers((prev) => ({
-        ...prev,
-        [questionIndex]: answerIndex,
-      }));
-    }
+    if (selectedAnswers[questionIndex] !== undefined) return;
+
+    setSelectedAnswers((prev) => ({
+      ...prev,
+      [questionIndex]: answerIndex,
+    }));
   };
 
   const calculateScore = () => {
@@ -162,9 +212,11 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
   if (showQuiz) {
     const score = calculateScore();
     const percentage = Math.round((score / questions.length) * 100);
+    const currentQ = questions[currentQuestion];
+    const userAnswer = selectedAnswers[currentQuestion];
 
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50" ref={containerRef}>
         <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
           <div className="flex items-center justify-between px-4 h-14">
             <button
@@ -178,13 +230,34 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
               className="flex items-center gap-2"
             >
               <ArrowLeft size={20} />
-              <span className="text-sm font-semibold">Exit Quiz</span>
+              <span className="text-sm font-semibold">Exit</span>
             </button>
             <div className="flex items-center gap-2">
-              <Clock size={18} className={timeLeft < 60 ? 'text-red-300' : ''} />
+              <Clock size={18} className={timeLeft < 60 ? 'text-red-300 animate-pulse' : ''} />
               <span className={`font-bold tabular-nums ${timeLeft < 60 ? 'text-red-300' : ''}`}>
                 {formatTime(timeLeft)}
               </span>
+            </div>
+          </div>
+          <div className="px-4 pb-3 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-blue-200">
+                Question {currentQuestion + 1} / {questions.length}
+              </span>
+              <div className="flex gap-1">
+                {questions.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-6 h-1.5 rounded-full transition-all ${
+                      idx === currentQuestion
+                        ? 'bg-yellow-400'
+                        : selectedAnswers[idx] !== undefined
+                        ? 'bg-green-400'
+                        : 'bg-white/30'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </header>
@@ -192,73 +265,64 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
         <div className="max-w-2xl mx-auto px-4 py-4">
           {!showResults ? (
             <>
-              <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-gray-500">
-                    Question {currentQuestion + 1} of {questions.length}
-                  </span>
-                  <div className="flex gap-1">
-                    {questions.map((_, idx) => (
-                      <div
-                        key={idx}
-                        className={`w-6 h-1.5 rounded-full ${
-                          idx === currentQuestion
-                            ? 'bg-blue-600'
-                            : selectedAnswers[idx] !== undefined
-                            ? 'bg-green-400'
-                            : 'bg-gray-300'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
+              <div className="flex items-center justify-center gap-2 mb-3 text-xs text-gray-500">
+                <ChevronUp size={16} />
+                <span>Swipe up/down for next/previous question</span>
+                <ChevronDown size={16} />
+              </div>
 
-                <div className="bg-gray-50 rounded-xl p-4 mb-5">
-                  <p className="text-sm font-medium text-gray-900 leading-relaxed">
-                    {questions[currentQuestion].question}
+              <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
+                <div className="bg-gray-50 rounded-xl p-4 mb-5 relative">
+                  <span className="absolute top-2 right-2 px-2 py-1 bg-blue-950 text-white text-xs font-bold rounded-lg">
+                    Q{currentQuestion + 1}
+                  </span>
+                  <p className="text-base font-medium text-gray-900 leading-relaxed pr-12">
+                    {currentQ.question}
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  {questions[currentQuestion].options.map((option, idx) => {
-                    const isSelected = selectedAnswers[currentQuestion] === idx;
-                    const isCorrect = questions[currentQuestion].correctAnswer === idx;
-                    let optionClass = 'border-2 border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50';
+                <div className="space-y-3">
+                  {currentQ.options.map((option, idx) => {
+                    const isUserAnswer = userAnswer === idx;
+                    const isCorrect = currentQ.correctAnswer === idx;
+                    let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
 
-                    if (showResults) {
+                    if (userAnswer !== undefined) {
                       if (isCorrect) {
-                        optionClass = 'border-2 border-green-500 bg-green-50';
-                      } else if (isSelected && !isCorrect) {
-                        optionClass = 'border-2 border-red-500 bg-red-50';
+                        optionStyle = 'border-2 border-green-500 bg-green-50';
+                      } else if (isUserAnswer && !isCorrect) {
+                        optionStyle = 'border-2 border-red-500 bg-red-50';
                       }
-                    } else if (isSelected) {
-                      optionClass = 'border-2 border-blue-500 bg-blue-50';
                     }
 
                     return (
                       <button
                         key={idx}
                         onClick={() => handleAnswer(currentQuestion, idx)}
-                        className={`w-full text-left px-4 py-3.5 rounded-xl transition-all flex items-center gap-3 ${optionClass}`}
-                        disabled={showResults}
+                        className={`w-full text-left px-5 py-4 rounded-xl transition-all flex items-center gap-3 ${optionStyle}`}
+                        disabled={userAnswer !== undefined}
                       >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                          isSelected
-                            ? showResults
-                              ? isCorrect
-                                ? 'bg-green-500 text-white'
-                                : 'bg-red-500 text-white'
-                              : 'bg-blue-500 text-white'
-                            : 'bg-gray-200 text-gray-600'
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                          userAnswer !== undefined
+                            ? isCorrect
+                              ? 'bg-green-500 text-white'
+                              : isUserAnswer
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-200 text-gray-700'
+                            : 'bg-blue-100 text-blue-700'
                         }`}>
                           {String.fromCharCode(65 + idx)}
                         </div>
-                        <span className="text-sm font-medium">{option}</span>
-                        {showResults && isCorrect && (
-                          <Check size={18} className="ml-auto text-green-600" />
+                        <span className="text-sm font-medium flex-1">{option}</span>
+                        {userAnswer !== undefined && isCorrect && (
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">
+                            ✓ CORRECT
+                          </span>
                         )}
-                        {showResults && isSelected && !isCorrect && (
-                          <X size={18} className="ml-auto text-red-600" />
+                        {userAnswer !== undefined && isUserAnswer && !isCorrect && (
+                          <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">
+                            ✗ WRONG
+                          </span>
                         )}
                       </button>
                     );
@@ -270,7 +334,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                 <button
                   onClick={handlePrev}
                   disabled={currentQuestion === 0}
-                  className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3.5 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
                 >
                   <ChevronUp size={18} className="rotate-[-90deg]" />
                   Previous
@@ -278,14 +342,14 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                 {currentQuestion === questions.length - 1 ? (
                   <button
                     onClick={handleSubmit}
-                    className="flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold py-3 rounded-xl hover:from-red-700 hover:to-red-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                    className="flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold py-3.5 rounded-xl hover:from-red-700 hover:to-red-800 transition-colors shadow-lg"
                   >
                     Submit Quiz
                   </button>
                 ) : (
                   <button
                     onClick={handleNext}
-                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg flex items-center justify-center gap-2 text-sm"
                   >
                     Next
                     <ChevronDown size={18} className="rotate-[-90deg]" />
@@ -302,12 +366,12 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                     <button
                       key={idx}
                       onClick={() => setCurrentQuestion(idx)}
-                      className={`py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                      className={`py-3 rounded-lg text-sm font-bold transition-all ${
                         idx === currentQuestion
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-blue-600 text-white shadow-lg'
                           : selectedAnswers[idx] !== undefined
-                          ? 'bg-green-100 text-green-700 border-2 border-green-300'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-green-100 text-green-700 border-2 border-green-400'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-2 border-gray-200'
                       }`}
                     >
                       {idx + 1}
@@ -318,11 +382,11 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
             </>
           ) : (
             <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
-              <div className={`w-24 h-24 rounded-full mx-auto mb-5 flex items-center justify-center ${
+              <div className={`w-28 h-28 rounded-full mx-auto mb-5 flex items-center justify-center ${
                 percentage >= 60 ? 'bg-green-100' : percentage >= 40 ? 'bg-yellow-100' : 'bg-red-100'
               }`}>
                 <div className="text-center">
-                  <p className={`text-3xl font-bold ${
+                  <p className={`text-4xl font-bold ${
                     percentage >= 60 ? 'text-green-600' : percentage >= 40 ? 'text-yellow-600' : 'text-red-600'
                   }`}>{percentage}%</p>
                 </div>
@@ -334,12 +398,12 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
               </p>
 
               <div className="grid grid-cols-2 gap-3 mb-6">
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-2xl font-bold text-green-600">{score}</p>
+                <div className="bg-green-50 rounded-xl p-4 border-2 border-green-200">
+                  <p className="text-3xl font-bold text-green-600">{score}</p>
                   <p className="text-xs font-medium text-green-700">Correct</p>
                 </div>
-                <div className="bg-red-50 rounded-xl p-4">
-                  <p className="text-2xl font-bold text-red-600">{questions.length - score}</p>
+                <div className="bg-red-50 rounded-xl p-4 border-2 border-red-200">
+                  <p className="text-3xl font-bold text-red-600">{questions.length - score}</p>
                   <p className="text-xs font-medium text-red-700">Wrong</p>
                 </div>
               </div>
@@ -351,7 +415,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                   setSelectedAnswers({});
                   setTimeLeft(300);
                 }}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
               >
                 Review Answers
               </button>
@@ -388,7 +452,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
 
           <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-2xl">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-3xl shadow">
                 {freeTestSubjects.find(s => s.id === selectedSubject)?.icon}
               </div>
               <div>
@@ -401,28 +465,28 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
 
             <div className="grid grid-cols-3 gap-3 mb-5">
               <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-blue-950">5</p>
+                <p className="text-2xl font-bold text-blue-950">5</p>
                 <p className="text-xs text-gray-500">Questions</p>
               </div>
               <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-blue-950">5 min</p>
+                <p className="text-2xl font-bold text-blue-950">5 min</p>
                 <p className="text-xs text-gray-500">Duration</p>
               </div>
               <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-blue-950">5</p>
+                <p className="text-2xl font-bold text-blue-950">5</p>
                 <p className="text-xs text-gray-500">Marks</p>
               </div>
             </div>
 
             <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-5">
-              <p className="text-sm font-medium text-yellow-800">
+              <p className="text-sm font-bold text-yellow-800 mb-2">
                 📋 Instructions:
               </p>
-              <ul className="mt-2 space-y-1 text-xs text-yellow-700">
-                <li>• Each question carries 1 mark</li>
-                <li>• No negative marking</li>
+              <ul className="space-y-1.5 text-xs text-yellow-700">
+                <li>• Swipe UP/DOWN to navigate questions</li>
+                <li>• Tap to select your answer</li>
+                <li>• Green = Correct, Red = Wrong (auto shown)</li>
                 <li>• Timer will start automatically</li>
-                <li>• You can navigate between questions</li>
               </ul>
             </div>
 
@@ -431,7 +495,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                 setShowQuiz(true);
                 startQuiz();
               }}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg text-base"
             >
               Start Practice Test
             </button>
@@ -448,12 +512,12 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                   onClick={() => setSelectedSubject(subject.id)}
                   className="bg-white rounded-2xl shadow p-4 flex items-center gap-4 hover:shadow-lg transition-all active:scale-[0.98]"
                 >
-                  <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${subject.color} flex items-center justify-center text-white text-2xl shadow`}>
+                  <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${subject.color} flex items-center justify-center text-white text-3xl shadow`}>
                     {subject.icon}
                   </div>
                   <div className="text-left flex-1">
-                    <h4 className="text-base font-bold text-gray-900">{subject.title}</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <h4 className="text-lg font-bold text-gray-900">{subject.title}</h4>
+                    <p className="text-xs text-gray-500 mt-1">
                       {subject.tests} tests • {subject.questions} questions • {subject.duration} min
                     </p>
                   </div>
