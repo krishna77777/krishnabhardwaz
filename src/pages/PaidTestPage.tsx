@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, XCircle, ChevronRight, RotateCcw, BookOpen, Lock, CreditCard, Clock, ChevronUp, ChevronDown, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, BookOpen, Lock, CreditCard, Clock, Check, X } from 'lucide-react';
 import { historyQuestions, geographyQuestions, lucentSubjectWiseQuestions, ghatnachakraQuestions } from '../data/questions';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../utils/supabase';
@@ -17,7 +17,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   const [lucentSubject, setLucentSubject] = useState<LucentSubject | null>(null);
   const [ghatnachakraSubject, setGhatnachakraSubject] = useState<GhatnachakraSubject | null>(null);
   const [currentQ, setCurrentQ] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
   const [answered, setAnswered] = useState<Record<number, number>>({});
   const [score, setScore] = useState(0);
   const [purchasedTests, setPurchasedTests] = useState<{ lucent: boolean; ghatnachakra: boolean }>({ lucent: false, ghatnachakra: false });
@@ -25,12 +24,13 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaidTest, setSelectedPaidTest] = useState<'lucent' | 'ghatnachakra' | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes
+  const [timeLeft, setTimeLeft] = useState(300);
   const [quizStarted, setQuizStarted] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [swipeState, setSwipeState] = useState({ startY: 0, currentY: 0, isSwiping: false });
+  const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
-  // Check purchased tests
   useEffect(() => {
     const checkPurchases = async () => {
       if (!user) return;
@@ -40,7 +40,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
           .select('test_type')
           .eq('user_id', user.id);
 
-        const tests: { lucent: boolean; ghatnachakra: boolean } = { lucent: false, ghatnachakra: false };
+        const tests = { lucent: false, ghatnachakra: false };
         data?.forEach((item) => {
           if (item.test_type === 'lucent') tests.lucent = true;
           if (item.test_type === 'ghatnachakra') tests.ghatnachakra = true;
@@ -55,7 +55,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     checkPurchases();
   }, [user]);
 
-  // Timer logic
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (quizStarted && timeLeft > 0 && !showResults) {
@@ -73,13 +72,62 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     return () => clearInterval(timer);
   }, [quizStarted, timeLeft, showResults]);
 
+  // Swipe handlers for reel-style scrolling
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !quizStarted || showResults) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      setSwipeState({
+        startY: e.touches[0].clientY,
+        currentY: e.touches[0].clientY,
+        isSwiping: true,
+      });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!swipeState.isSwiping) return;
+      setSwipeState((prev) => ({
+        ...prev,
+        currentY: e.touches[0].clientY,
+      }));
+    };
+
+    const handleTouchEnd = () => {
+      if (!swipeState.isSwiping) return;
+
+      const diff = swipeState.startY - swipeState.currentY;
+      const threshold = 50;
+      const questions = getQuestions();
+
+      if (Math.abs(diff) > threshold) {
+        if (diff > 0 && currentQ < questions.length - 1) {
+          setCurrentQ(currentQ + 1);
+        } else if (diff < 0 && currentQ > 0) {
+          setCurrentQ(currentQ - 1);
+        }
+      }
+
+      setSwipeState({ startY: 0, currentY: 0, isSwiping: false });
+    };
+
+    container.addEventListener('touchstart', handleTouchStart);
+    container.addEventListener('touchmove', handleTouchMove);
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [swipeState, currentQ, quizStarted, showResults]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Get questions based on current subject
   const getQuestions = () => {
     if (subject === 'history') return historyQuestions;
     if (subject === 'geography') return geographyQuestions;
@@ -90,8 +138,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
   const questions = getQuestions();
 
-  const handleSelect = (questionIndex: number, answerIndex: number) => {
-    if (showResults) return;
+  const handleAnswer = (questionIndex: number, answerIndex: number) => {
     if (answered[questionIndex] !== undefined) return;
 
     const newAnswered = { ...answered, [questionIndex]: answerIndex };
@@ -100,36 +147,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     if (answerIndex === questions[questionIndex].correct) {
       setScore((s) => s + 1);
     }
-  };
-
-  const handleNext = () => {
-    if (currentQ < questions.length - 1) {
-      setCurrentQ(currentQ + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentQ > 0) {
-      setCurrentQ(currentQ - 1);
-    }
-  };
-
-  const handleRestart = () => {
-    setCurrentQ(0);
-    setAnswered({});
-    setScore(0);
-    setTimeLeft(300);
-    setShowResults(false);
-    setQuizStarted(false);
-  };
-
-  const startQuiz = () => {
-    setQuizStarted(true);
-    setTimeLeft(300);
-  };
-
-  const handleSubmit = () => {
-    setShowResults(true);
   };
 
   const calculateScore = () => {
@@ -147,7 +164,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     setPaymentLoading(true);
 
     try {
-      // Simulate payment success - in real app, integrate with payment gateway
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       const { error } = await supabase
@@ -169,16 +185,35 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     }
   };
 
+  const startQuiz = () => {
+    setQuizStarted(true);
+    setTimeLeft(300);
+  };
+
+  const handleNext = () => {
+    if (currentQ < questions.length - 1) {
+      setCurrentQ(currentQ + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentQ > 0) {
+      setCurrentQ(currentQ - 1);
+    }
+  };
+
+  const handleSubmit = () => {
+    setShowResults(true);
+  };
+
   const PaymentModal = () => (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="bg-gradient-to-r from-blue-950 to-blue-900 text-white px-6 py-6">
           <h2 className="text-2xl font-bold">Complete Purchase</h2>
           <p className="text-blue-100 text-sm mt-1">Unlock full test series</p>
         </div>
 
-        {/* Content */}
         <div className="px-6 py-8">
           <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 mb-6">
             <p className="text-gray-700 text-sm mb-3">You are purchasing:</p>
@@ -192,17 +227,15 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
             <p className="text-xs text-gray-500 mt-3">Valid for 365 days from purchase date</p>
           </div>
 
-          {/* Payment Button */}
           <button
             onClick={() => handlePayment(selectedPaidTest!)}
             disabled={paymentLoading}
             className="w-full bg-gradient-to-r from-red-600 to-red-700 text-white font-bold py-4 rounded-xl hover:from-red-700 hover:to-red-800 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
             <CreditCard size={20} />
-            {paymentLoading ? 'Processing...' : 'Pay Now - ₹59'}
+            {paymentLoading ? 'Processing...' : 'Pay Now - Rs 59'}
           </button>
 
-          {/* Cancel Button */}
           <button
             onClick={() => {
               setShowPaymentModal(false);
@@ -212,343 +245,467 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
           >
             Cancel
           </button>
-
-          <p className="text-xs text-gray-500 text-center mt-4">Secure payment powered by Razorpay</p>
         </div>
       </div>
     </div>
   );
 
-  // Free subjects view
-  if (!subject) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
-          <div className="flex items-center gap-3 px-4 h-14">
-            <button onClick={onBack} className="p-2 rounded-lg hover:bg-blue-800 transition-colors" aria-label="Go back">
-              <ArrowLeft size={22} />
-            </button>
-            <h1 className="text-lg font-bold">Paid Test Series</h1>
-          </div>
-        </header>
+  // Show quiz screen
+  if (quizStarted && subject) {
+    const currentQuestion = questions[currentQ];
+    const userAnswer = answered[currentQ];
+    const finalScore = calculateScore();
+    const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
 
-        <div className="p-4 pb-24 max-w-2xl mx-auto">
-          <div className="space-y-4">
-            {/* Lucent Test */}
+    return (
+      <div className="min-h-screen bg-gray-50" ref={containerRef}>
+        <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
+          <div className="flex items-center justify-between px-4 h-14">
             <button
               onClick={() => {
-                if (purchasedTests.lucent) {
-                  setSubject('lucent');
-                  setLucentSubject('lucent-gk');
-                } else {
-                  setShowPaymentModal(true);
-                  setSelectedPaidTest('lucent');
-                }
+                setQuizStarted(false);
+                setShowResults(false);
+                setAnswered({});
+                setCurrentQ(0);
+                setScore(0);
               }}
-              className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-yellow-600 border-opacity-20"
+              className="flex items-center gap-2"
             >
-              <div className="bg-yellow-100 text-yellow-700 p-3 rounded-xl flex-shrink-0">
-                <BookOpen size={24} strokeWidth={1.8} />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                  Lucent Subject Wise Test Series
-                  {!purchasedTests.lucent && <Lock size={16} className="text-red-600" />}
-                </h4>
-                <p className="text-xs text-gray-500 mt-1">GK & Science - Comprehensive coverage</p>
-                {purchasedTests.lucent && (
-                  <p className="text-xs text-green-600 font-semibold mt-2">Purchased - Valid for 365 days</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                {!purchasedTests.lucent && (
-                  <>
-                    <span className="text-xl font-bold text-red-600">₹59</span>
-                    <ChevronRight size={20} className="text-gray-400" />
-                  </>
-                )}
-              </div>
+              <ArrowLeft size={20} />
+              <span className="text-sm font-semibold">Exit</span>
             </button>
-
-            {/* Ghatnachakra Test */}
-            <button
-              onClick={() => {
-                if (purchasedTests.ghatnachakra) {
-                  setSubject('ghatnachakra');
-                  setGhatnachakraSubject('ghatnachakra-history');
-                } else {
-                  setShowPaymentModal(true);
-                  setSelectedPaidTest('ghatnachakra');
-                }
-              }}
-              className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-red-600 border-opacity-20"
-            >
-              <div className="bg-red-100 text-red-600 p-3 rounded-xl flex-shrink-0">
-                <BookOpen size={24} strokeWidth={1.8} />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                  Ghatnachakra Subject Wise Test Series
-                  {!purchasedTests.ghatnachakra && <Lock size={16} className="text-red-600" />}
-                </h4>
-                <p className="text-xs text-gray-500 mt-1">History & Geography - Event-based questions</p>
-                {purchasedTests.ghatnachakra && (
-                  <p className="text-xs text-green-600 font-semibold mt-2">Purchased - Valid for 365 days</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                {!purchasedTests.ghatnachakra && (
-                  <>
-                    <span className="text-xl font-bold text-red-600">₹59</span>
-                    <ChevronRight size={20} className="text-gray-400" />
-                  </>
-                )}
-              </div>
-            </button>
-
-            {/* Demo Free Tests */}
-            <div className="mt-8 pt-8 border-t border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Free Demo</h3>
-              <button
-                onClick={() => setSubject('history')}
-                className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-red-600 border-opacity-20"
-              >
-                <div className="bg-red-100 text-red-600 p-3 rounded-xl">
-                  <BookOpen size={24} strokeWidth={1.8} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800">History (Sample)</h4>
-                  <p className="text-xs text-gray-500">10 Questions</p>
-                </div>
-                <ChevronRight size={20} className="text-red-600" />
-              </button>
-              <button
-                onClick={() => setSubject('geography')}
-                className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-yellow-600 border-opacity-20 mt-3"
-              >
-                <div className="bg-yellow-100 text-yellow-700 p-3 rounded-xl">
-                  <BookOpen size={24} strokeWidth={1.8} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800">Geography (Sample)</h4>
-                  <p className="text-xs text-gray-500">10 Questions</p>
-                </div>
-                <ChevronRight size={20} className="text-yellow-700" />
-              </button>
+            <div className="flex items-center gap-2">
+              <Clock size={18} className={timeLeft < 60 ? 'text-red-300 animate-pulse' : ''} />
+              <span className={`font-bold tabular-nums ${timeLeft < 60 ? 'text-red-300' : ''}`}>
+                {formatTime(timeLeft)}
+              </span>
             </div>
           </div>
-        </div>
-
-        {showPaymentModal && <PaymentModal />}
-      </div>
-    );
-  }
-
-  // Lucent subjects selection
-  if (subject === 'lucent' && !lucentSubject) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
-          <div className="flex items-center gap-3 px-4 h-14">
-            <button
-              onClick={() => setSubject(null)}
-              className="p-2 rounded-lg hover:bg-blue-800 transition-colors"
-              aria-label="Go back"
-            >
-              <ArrowLeft size={22} />
-            </button>
-            <h1 className="text-lg font-bold">Lucent Test Series</h1>
+          <div className="px-4 pb-3 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-blue-200">
+                Question {currentQ + 1} / {questions.length}
+              </span>
+              <div className="flex gap-1">
+                {questions.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-6 h-1.5 rounded-full transition-all ${
+                      idx === currentQ
+                        ? 'bg-yellow-400'
+                        : answered[idx] !== undefined
+                        ? 'bg-green-400'
+                        : 'bg-white/30'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </header>
 
-        <div className="p-4 pb-24 max-w-2xl mx-auto space-y-4">
-          <button
-            onClick={() => setLucentSubject('lucent-gk')}
-            className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-yellow-600 border-opacity-20"
-          >
-            <div className="bg-yellow-100 text-yellow-700 p-3 rounded-xl">
-              <BookOpen size={24} strokeWidth={1.8} />
+        <div className="max-w-2xl mx-auto px-4 py-4">
+          {!showResults ? (
+            <>
+              <div className="text-center mb-3 text-xs text-gray-500">
+                Swipe UP/DOWN for next/previous question
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
+                <div className="bg-gray-50 rounded-xl p-4 mb-5 relative">
+                  <span className="absolute top-2 right-2 px-2 py-1 bg-blue-950 text-white text-xs font-bold rounded-lg">
+                    Q{currentQ + 1}
+                  </span>
+                  <p className="text-base font-medium text-gray-900 leading-relaxed pr-12">
+                    {currentQuestion.question}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {currentQuestion.options.map((option, idx) => {
+                    const isUserAnswer = userAnswer === idx;
+                    const isCorrect = currentQuestion.correct === idx;
+                    let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
+
+                    if (userAnswer !== undefined) {
+                      if (isCorrect) {
+                        optionStyle = 'border-2 border-green-500 bg-green-50';
+                      } else if (isUserAnswer && !isCorrect) {
+                        optionStyle = 'border-2 border-red-500 bg-red-50';
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleAnswer(currentQ, idx)}
+                        className={`w-full text-left px-5 py-4 rounded-xl transition-all flex items-center gap-3 ${optionStyle}`}
+                        disabled={userAnswer !== undefined}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                          userAnswer !== undefined
+                            ? isCorrect
+                              ? 'bg-green-500 text-white'
+                              : isUserAnswer
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-200 text-gray-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {String.fromCharCode(65 + idx)}
+                        </div>
+                        <span className="text-sm font-medium flex-1">{option}</span>
+                        {userAnswer !== undefined && isCorrect && (
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">
+                            CORRECT
+                          </span>
+                        )}
+                        {userAnswer !== undefined && isUserAnswer && !isCorrect && (
+                          <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">
+                            WRONG
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePrev}
+                  disabled={currentQ === 0}
+                  className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3.5 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {currentQ === questions.length - 1 ? (
+                  <button
+                    onClick={handleSubmit}
+                    className="flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold py-3.5 rounded-xl hover:from-red-700 hover:to-red-800 transition-colors shadow-lg"
+                  >
+                    Submit Quiz
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNext}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
+                  >
+                    Next
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-6 bg-white rounded-2xl shadow p-4">
+                <p className="text-xs font-semibold text-gray-500 mb-3 text-center">
+                  Jump to Question
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {questions.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentQ(idx)}
+                      className={`py-3 rounded-lg text-sm font-bold transition-all ${
+                        idx === currentQ
+                          ? 'bg-blue-600 text-white shadow-lg'
+                          : answered[idx] !== undefined
+                          ? 'bg-green-100 text-green-700 border-2 border-green-400'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-2 border-gray-200'
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
+              <div className={`w-28 h-28 rounded-full mx-auto mb-5 flex items-center justify-center ${
+                percentage >= 60 ? 'bg-green-100' : percentage >= 40 ? 'bg-yellow-100' : 'bg-red-100'
+              }`}>
+                <div className="text-center">
+                  <p className={`text-4xl font-bold ${
+                    percentage >= 60 ? 'text-green-600' : percentage >= 40 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>{percentage}%</p>
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h2>
+              <p className="text-gray-600 mb-6">
+                You scored {finalScore} out of {questions.length} questions
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="bg-green-50 rounded-xl p-4 border-2 border-green-200">
+                  <p className="text-3xl font-bold text-green-600">{finalScore}</p>
+                  <p className="text-xs font-medium text-green-700">Correct</p>
+                </div>
+                <div className="bg-red-50 rounded-xl p-4 border-2 border-red-200">
+                  <p className="text-3xl font-bold text-red-600">{questions.length - finalScore}</p>
+                  <p className="text-xs font-medium text-red-700">Wrong</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowResults(false);
+                  setCurrentQ(0);
+                  setAnswered({});
+                  setTimeLeft(300);
+                }}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
+              >
+                Review Answers
+              </button>
             </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-800">General Knowledge</h4>
-              <p className="text-xs text-gray-500">10 Questions</p>
-            </div>
-            <ChevronRight size={20} className="text-yellow-700" />
-          </button>
-          <button
-            onClick={() => setLucentSubject('lucent-science')}
-            className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-yellow-600 border-opacity-20"
-          >
-            <div className="bg-yellow-100 text-yellow-700 p-3 rounded-xl">
-              <BookOpen size={24} strokeWidth={1.8} />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-800">Science</h4>
-              <p className="text-xs text-gray-500">10 Questions</p>
-            </div>
-            <ChevronRight size={20} className="text-yellow-700" />
-          </button>
+          )}
         </div>
       </div>
     );
   }
 
-  // Ghatnachakra subjects selection
-  if (subject === 'ghatnachakra' && !ghatnachakraSubject) {
+  // Show subject selection screen
+  if (subject) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 pb-20">
         <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
           <div className="flex items-center gap-3 px-4 h-14">
-            <button
-              onClick={() => setSubject(null)}
-              className="p-2 rounded-lg hover:bg-blue-800 transition-colors"
-              aria-label="Go back"
-            >
+            <button onClick={() => setSubject(null)} className="p-2 rounded-lg hover:bg-blue-800 transition-colors">
               <ArrowLeft size={22} />
             </button>
-            <h1 className="text-lg font-bold">Ghatnachakra Test Series</h1>
+            <div>
+              <h1 className="text-lg font-bold">{subject.charAt(0).toUpperCase() + subject.slice(1)}</h1>
+              <p className="text-[10px] text-yellow-300 font-semibold">Select Subject</p>
+            </div>
           </div>
         </header>
 
-        <div className="p-4 pb-24 max-w-2xl mx-auto space-y-4">
-          <button
-            onClick={() => setGhatnachakraSubject('ghatnachakra-history')}
-            className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-red-600 border-opacity-20"
-          >
-            <div className="bg-red-100 text-red-600 p-3 rounded-xl">
-              <BookOpen size={24} strokeWidth={1.8} />
+        <div className="p-4">
+          {subject === 'lucent' && (
+            <div className="space-y-3">
+              <button
+                onClick={() => { setLucentSubject('lucent-gk'); startQuiz(); }}
+                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center text-white text-2xl">
+                  GK
+                </div>
+                <div className="flex-1 text-left">
+                  <h3 className="font-bold text-gray-900">Lucent GK</h3>
+                  <p className="text-xs text-gray-500 mt-1">{lucentSubjectWiseQuestions['lucent-gk'].length} questions</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => { setLucentSubject('lucent-science'); startQuiz(); }}
+                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-400 to-green-500 flex items-center justify-center text-white text-2xl">
+                  SCI
+                </div>
+                <div className="flex-1 text-left">
+                  <h3 className="font-bold text-gray-900">Lucent Science</h3>
+                  <p className="text-xs text-gray-500 mt-1">{lucentSubjectWiseQuestions['lucent-science'].length} questions</p>
+                </div>
+              </button>
             </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-800">History</h4>
-              <p className="text-xs text-gray-500">10 Questions</p>
+          )}
+
+          {subject === 'ghatnachakra' && (
+            <div className="space-y-3">
+              <button
+                onClick={() => { setGhatnachakraSubject('ghatnachakra-history'); startQuiz(); }}
+                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center text-white text-2xl">
+                  HIS
+                </div>
+                <div className="flex-1 text-left">
+                  <h3 className="font-bold text-gray-900">Ghatnachakra History</h3>
+                  <p className="text-xs text-gray-500 mt-1">{ghatnachakraQuestions['ghatnachakra-history'].length} questions</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => { setGhatnachakraSubject('ghatnachakra-geography'); startQuiz(); }}
+                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 flex items-center justify-center text-white text-2xl">
+                  GEO
+                </div>
+                <div className="flex-1 text-left">
+                  <h3 className="font-bold text-gray-900">Ghatnachakra Geography</h3>
+                  <p className="text-xs text-gray-500 mt-1">{ghatnachakraQuestions['ghatnachakra-geography'].length} questions</p>
+                </div>
+              </button>
             </div>
-            <ChevronRight size={20} className="text-red-600" />
-          </button>
-          <button
-            onClick={() => setGhatnachakraSubject('ghatnachakra-geography')}
-            className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-red-600 border-opacity-20"
-          >
-            <div className="bg-red-100 text-red-600 p-3 rounded-xl">
-              <BookOpen size={24} strokeWidth={1.8} />
+          )}
+
+          {(subject === 'history' || subject === 'geography') && (
+            <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-2xl">
+                  {subject === 'history' ? 'HIS' : 'GEO'}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {subject === 'history' ? 'History' : 'Geography'} Test
+                  </h2>
+                  <p className="text-sm text-gray-500">Free Practice Test</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-950">{questions.length}</p>
+                  <p className="text-xs text-gray-500">Questions</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-950">5 min</p>
+                  <p className="text-xs text-gray-500">Duration</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-950">{questions.length}</p>
+                  <p className="text-xs text-gray-500">Marks</p>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-5">
+                <p className="text-sm font-bold text-yellow-800 mb-2">Instructions:</p>
+                <ul className="space-y-1.5 text-xs text-yellow-700">
+                  <li>Swipe UP/DOWN to navigate questions</li>
+                  <li>Tap to select your answer</li>
+                  <li>Green = Correct, Red = Wrong (auto shown)</li>
+                  <li>Timer starts automatically</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={startQuiz}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
+              >
+                Start Test
+              </button>
             </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-800">Geography</h4>
-              <p className="text-xs text-gray-500">10 Questions</p>
-            </div>
-            <ChevronRight size={20} className="text-red-600" />
-          </button>
+          )}
         </div>
       </div>
     );
   }
 
-  // Quiz view
+  // Main subject selection
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
         <div className="flex items-center gap-3 px-4 h-14">
-          <button
-            onClick={() => {
-              if (lucentSubject) {
-                setLucentSubject(null);
-              } else if (ghatnachakraSubject) {
-                setGhatnachakraSubject(null);
-              } else {
-                setSubject(null);
-              }
-            }}
-            className="p-2 rounded-lg hover:bg-blue-800 transition-colors"
-            aria-label="Go back"
-          >
+          <button onClick={onBack} className="p-2 rounded-lg hover:bg-blue-800 transition-colors">
             <ArrowLeft size={22} />
           </button>
-          <h1 className="text-lg font-bold capitalize">{subject}</h1>
-          <div className="ml-auto bg-red-600 text-xs font-semibold px-2.5 py-1 rounded-full">
-            {currentQ + 1}/{questions.length}
+          <div>
+            <h1 className="text-lg font-bold">Paid Test Series</h1>
+            <p className="text-[10px] text-yellow-300 font-semibold">Premium Content</p>
           </div>
         </div>
       </header>
 
-      {/* Progress Bar */}
-      <div className="h-1 bg-gray-200">
-        <div
-          className="h-1 bg-red-600 transition-all duration-300"
-          style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }}
-        />
-      </div>
+      {showPaymentModal && <PaymentModal />}
 
-      <div className="p-4 pb-20 max-w-2xl mx-auto">
-        {/* Score */}
-        <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm border-2 border-red-600 border-opacity-20">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Score</span>
-            <span className="text-lg font-bold text-red-600">{score}/{currentQ + (answered ? 1 : 0)}</span>
-          </div>
-        </div>
+      <div className="p-4 pb-24 max-w-2xl mx-auto">
+        <div className="space-y-4">
+          {/* Free Subjects */}
+          <button
+            onClick={() => setSubject('history')}
+            className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-blue-200"
+          >
+            <div className="bg-blue-100 text-blue-700 p-3 rounded-xl flex-shrink-0">
+              <BookOpen size={24} strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900">History</h4>
+              <p className="text-xs text-gray-500 mt-1">Free - Practice test</p>
+            </div>
+          </button>
 
-        {/* Question */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm mb-5 border-2 border-blue-950 border-opacity-10">
-          <h3 className="font-semibold text-gray-900 text-base mb-4 leading-relaxed">
-            {questions[currentQ].question}
-          </h3>
+          <button
+            onClick={() => setSubject('geography')}
+            className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-teal-200"
+          >
+            <div className="bg-teal-100 text-teal-700 p-3 rounded-xl flex-shrink-0">
+              <BookOpen size={24} strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900">Geography</h4>
+              <p className="text-xs text-gray-500 mt-1">Free - Practice test</p>
+            </div>
+          </button>
 
-          {/* Options */}
-          <div className="space-y-2.5">
-            {questions[currentQ].options.map((option, index) => {
-              const isSelected = selected === index;
-              const isCorrect = index === questions[currentQ].correct;
-              let optionStyle = 'border-blue-950 border-opacity-20 text-gray-700 hover:border-opacity-100';
-              let iconEl = null;
-
-              if (answered) {
-                if (isCorrect) {
-                  optionStyle = 'bg-green-50 border-green-500 text-green-700';
-                  iconEl = <CheckCircle size={18} className="text-green-600" />;
-                } else if (isSelected && !isCorrect) {
-                  optionStyle = 'bg-red-50 border-red-500 text-red-700';
-                  iconEl = <XCircle size={18} className="text-red-600" />;
-                }
+          {/* Paid Subjects */}
+          <button
+            onClick={() => {
+              if (purchasedTests.lucent) {
+                setSubject('lucent');
+              } else {
+                setShowPaymentModal(true);
+                setSelectedPaidTest('lucent');
               }
+            }}
+            className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-yellow-200"
+          >
+            <div className="bg-yellow-100 text-yellow-700 p-3 rounded-xl flex-shrink-0">
+              <BookOpen size={24} strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                Lucent Subject Wise
+                {!purchasedTests.lucent && <Lock size={16} className="text-red-600" />}
+              </h4>
+              <p className="text-xs text-gray-600 mt-1">GK & Science - Comprehensive coverage</p>
+              {purchasedTests.lucent && (
+                <p className="text-xs text-green-600 font-semibold mt-2">Purchased - Valid for 365 days</p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {!purchasedTests.lucent && (
+                <>
+                  <span className="text-xl font-bold text-red-600">Rs 59</span>
+                </>
+              )}
+            </div>
+          </button>
 
-              return (
-                <button
-                  key={index}
-                  onClick={() => handleSelect(index)}
-                  disabled={answered}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left text-sm transition-all ${optionStyle} ${
-                    !answered ? 'hover:border-red-300 active:scale-[0.98]' : 'cursor-default'
-                  }`}
-                >
-                  <span className="flex-1">{option}</span>
-                  {iconEl}
-                </button>
-              );
-            })}
-          </div>
+          <button
+            onClick={() => {
+              if (purchasedTests.ghatnachakra) {
+                setSubject('ghatnachakra');
+              } else {
+                setShowPaymentModal(true);
+                setSelectedPaidTest('ghatnachakra');
+              }
+            }}
+            className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-red-200"
+          >
+            <div className="bg-red-100 text-red-600 p-3 rounded-xl flex-shrink-0">
+              <BookOpen size={24} strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                Ghatnachakra Subject Wise
+                {!purchasedTests.ghatnachakra && <Lock size={16} className="text-red-600" />}
+              </h4>
+              <p className="text-xs text-gray-600 mt-1">History & Geography - Event-based questions</p>
+              {purchasedTests.ghatnachakra && (
+                <p className="text-xs text-green-600 font-semibold mt-2">Purchased - Valid for 365 days</p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {!purchasedTests.ghatnachakra && (
+                <>
+                  <span className="text-xl font-bold text-red-600">Rs 59</span>
+                </>
+              )}
+            </div>
+          </button>
         </div>
-
-        {/* Next / Restart Button */}
-        {answered && (
-          <div className="flex justify-center">
-            {currentQ === questions.length - 1 ? (
-              <button
-                onClick={handleRestart}
-                className="flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-red-700 active:scale-[0.97] transition-all shadow-sm"
-              >
-                <RotateCcw size={16} />
-                Play Again
-              </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                className="flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-red-700 active:scale-[0.97] transition-all shadow-sm"
-              >
-                Next Question
-                <ChevronRight size={16} />
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
