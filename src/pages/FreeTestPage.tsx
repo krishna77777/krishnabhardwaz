@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { supabase } from '../utils/supabase';
+
+interface Question {
+  id: string;
+  category: string;
+  subject: string;
+  question: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_answer: string;
+}
 
 interface FreeTestPageProps {
   onBack: () => void;
@@ -7,7 +20,7 @@ interface FreeTestPageProps {
 
 const freeTestSubjects = [
   {
-    id: 'reasoning',
+    id: 'Reasoning',
     title: 'Reasoning',
     icon: '🧠',
     tests: 15,
@@ -16,7 +29,7 @@ const freeTestSubjects = [
     color: 'from-blue-500 to-blue-600',
   },
   {
-    id: 'mathematics',
+    id: 'Mathematics',
     title: 'Mathematics',
     icon: '🔢',
     tests: 12,
@@ -25,7 +38,7 @@ const freeTestSubjects = [
     color: 'from-green-500 to-green-600',
   },
   {
-    id: 'english',
+    id: 'English',
     title: 'English',
     icon: '📖',
     tests: 10,
@@ -34,7 +47,7 @@ const freeTestSubjects = [
     color: 'from-orange-500 to-orange-600',
   },
   {
-    id: 'general-knowledge',
+    id: 'General Knowledge',
     title: 'General Knowledge',
     icon: '🌍',
     tests: 8,
@@ -43,7 +56,7 @@ const freeTestSubjects = [
     color: 'from-teal-500 to-teal-600',
   },
   {
-    id: 'science',
+    id: 'Science',
     title: 'Science',
     icon: '🔬',
     tests: 10,
@@ -57,45 +70,14 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [showResults, setShowResults] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [quizStarted, setQuizStarted] = useState(false);
   const [swipeState, setSwipeState] = useState({ startY: 0, currentY: 0, isSwiping: false });
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const questions = [
-    {
-      id: 1,
-      question: 'If A is the father of B, and B is the sister of C, how is A related to C?',
-      options: ['Father', 'Uncle', 'Brother', 'Grandfather'],
-      correctAnswer: 0,
-    },
-    {
-      id: 2,
-      question: 'Complete the series: 2, 6, 12, 20, 30, ?',
-      options: ['40', '42', '44', '38'],
-      correctAnswer: 1,
-    },
-    {
-      id: 3,
-      question: 'If COMPUTER is coded as RFUVQNPC, how is MEDICINE coded?',
-      options: ['MEDICINE', 'ENICIDEM', 'MFDIJDNE', 'ENICJDME'],
-      correctAnswer: 2,
-    },
-    {
-      id: 4,
-      question: 'Find the odd one out: 8, 27, 64, 100, 125',
-      options: ['8', '27', '64', '100'],
-      correctAnswer: 3,
-    },
-    {
-      id: 5,
-      question: 'A train 200m long crosses a pole in 8 seconds. What is its speed?',
-      options: ['25 km/h', '90 km/h', '72 km/h', '54 km/h'],
-      correctAnswer: 1,
-    },
-  ];
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -169,7 +151,41 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startQuiz = () => {
+  const loadQuestions = async (subjectName: string) => {
+    setQuestionsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('category', 'free_test')
+        .eq('subject', subjectName);
+
+      if (error) {
+        console.error('Error loading questions:', error);
+        return;
+      }
+
+      if (data) {
+        setQuestions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
+  const convertToOptions = (q: Question) => {
+    return [q.option_a, q.option_b, q.option_c, q.option_d];
+  };
+
+  const getCorrectIndex = (question: Question) => {
+    const map: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    return map[question.correct_answer];
+  };
+
+  const startQuiz = async (subjectName: string) => {
+    await loadQuestions(subjectName);
     setQuizStarted(true);
     setTimeLeft(300);
   };
@@ -177,20 +193,22 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
   const handleAnswer = (questionIndex: number, answerIndex: number) => {
     if (selectedAnswers[questionIndex] !== undefined) return;
 
+    const answerLetter = String.fromCharCode(65 + answerIndex);
     setSelectedAnswers((prev) => ({
       ...prev,
-      [questionIndex]: answerIndex,
+      [questionIndex]: answerLetter,
     }));
   };
 
   const calculateScore = () => {
-    let correct = 0;
-    questions.forEach((q, index) => {
-      if (selectedAnswers[index] === q.correctAnswer) {
-        correct++;
+    return Object.keys(selectedAnswers).reduce((acc, key) => {
+      const qIndex = parseInt(key);
+      const correctLetter = questions[qIndex].correct_answer;
+      if (selectedAnswers[qIndex] === correctLetter) {
+        return acc + 1;
       }
-    });
-    return correct;
+      return acc;
+    }, 0);
   };
 
   const handleNext = () => {
@@ -210,6 +228,17 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
   };
 
   if (showQuiz) {
+    if (questionsLoading || questions.length === 0) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+            <p className="text-sm text-gray-500 mt-3">Loading questions...</p>
+          </div>
+        </div>
+      );
+    }
+
     const score = calculateScore();
     const percentage = Math.round((score / questions.length) * 100);
     const currentQ = questions[currentQuestion];
@@ -226,6 +255,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                 setQuizStarted(false);
                 setSelectedAnswers({});
                 setCurrentQuestion(0);
+                setQuestions([]);
               }}
               className="flex items-center gap-2"
             >
@@ -282,9 +312,10 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  {currentQ.options.map((option, idx) => {
-                    const isUserAnswer = userAnswer === idx;
-                    const isCorrect = currentQ.correctAnswer === idx;
+                  {convertToOptions(currentQ).map((option, idx) => {
+                    const answerLetter = String.fromCharCode(65 + idx);
+                    const isUserAnswer = userAnswer === answerLetter;
+                    const isCorrect = currentQ.correct_answer === answerLetter;
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
 
                     if (userAnswer !== undefined) {
@@ -493,7 +524,7 @@ export default function FreeTestPage({ onBack }: FreeTestPageProps) {
             <button
               onClick={() => {
                 setShowQuiz(true);
-                startQuiz();
+                startQuiz(selectedSubject);
               }}
               className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg text-base"
             >

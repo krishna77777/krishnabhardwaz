@@ -1,26 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, BookOpen, Lock, CreditCard, Clock, Check, X } from 'lucide-react';
-import { historyQuestions, geographyQuestions, lucentSubjectWiseQuestions, ghatnachakraQuestions } from '../data/questions';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../utils/supabase';
+
+interface Question {
+  id: string;
+  category: string;
+  subject: string;
+  question: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_answer: string;
+}
 
 interface PaidTestPageProps {
   onBack: () => void;
 }
 
-type Subject = 'history' | 'geography' | 'lucent' | 'ghatnachakra' | null;
-type LucentSubject = 'lucent-gk' | 'lucent-science';
-type GhatnachakraSubject = 'ghatnachakra-history' | 'ghatnachakra-geography';
+type Subject = 'History' | 'Geography' | 'Lucent' | 'Ghatnachakra' | null;
 
 export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   const [subject, setSubject] = useState<Subject>(null);
-  const [lucentSubject, setLucentSubject] = useState<LucentSubject | null>(null);
-  const [ghatnachakraSubject, setGhatnachakraSubject] = useState<GhatnachakraSubject | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
-  const [answered, setAnswered] = useState<Record<number, number>>({});
+  const [answered, setAnswered] = useState<Record<number, string>>({});
   const [score, setScore] = useState(0);
   const [purchasedTests, setPurchasedTests] = useState<{ lucent: boolean; ghatnachakra: boolean }>({ lucent: false, ghatnachakra: false });
   const [loading, setLoading] = useState(true);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaidTest, setSelectedPaidTest] = useState<'lucent' | 'ghatnachakra' | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -72,7 +81,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     return () => clearInterval(timer);
   }, [quizStarted, timeLeft, showResults]);
 
-  // Swipe handlers for reel-style scrolling
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !quizStarted || showResults) return;
@@ -98,7 +106,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
       const diff = swipeState.startY - swipeState.currentY;
       const threshold = 50;
-      const questions = getQuestions();
 
       if (Math.abs(diff) > threshold) {
         if (diff > 0 && currentQ < questions.length - 1) {
@@ -120,7 +127,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [swipeState, currentQ, quizStarted, showResults]);
+  }, [swipeState, currentQ, questions.length, quizStarted, showResults]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -128,23 +135,47 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getQuestions = () => {
-    if (subject === 'history') return historyQuestions;
-    if (subject === 'geography') return geographyQuestions;
-    if (subject === 'lucent' && lucentSubject) return lucentSubjectWiseQuestions[lucentSubject];
-    if (subject === 'ghatnachakra' && ghatnachakraSubject) return ghatnachakraQuestions[ghatnachakraSubject];
-    return [];
+  const loadQuestions = async (subjectName: string) => {
+    setQuestionsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('category', 'paid_test')
+        .eq('subject', subjectName);
+
+      if (error) {
+        console.error('Error loading questions:', error);
+        return;
+      }
+
+      if (data) {
+        setQuestions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+    } finally {
+      setQuestionsLoading(false);
+    }
   };
 
-  const questions = getQuestions();
+  const convertToOptions = (q: Question) => {
+    return [q.option_a, q.option_b, q.option_c, q.option_d];
+  };
+
+  const getCorrectIndex = (question: Question) => {
+    const map: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    return map[question.correct_answer];
+  };
 
   const handleAnswer = (questionIndex: number, answerIndex: number) => {
     if (answered[questionIndex] !== undefined) return;
 
-    const newAnswered = { ...answered, [questionIndex]: answerIndex };
+    const answerLetter = String.fromCharCode(65 + answerIndex);
+    const newAnswered = { ...answered, [questionIndex]: answerLetter };
     setAnswered(newAnswered);
 
-    if (answerIndex === questions[questionIndex].correct) {
+    if (answerIndex === getCorrectIndex(questions[questionIndex])) {
       setScore((s) => s + 1);
     }
   };
@@ -152,7 +183,8 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   const calculateScore = () => {
     return Object.keys(answered).reduce((acc, key) => {
       const qIndex = parseInt(key);
-      if (answered[qIndex] === questions[qIndex].correct) {
+      const correctLetter = questions[qIndex].correct_answer;
+      if (answered[qIndex] === correctLetter) {
         return acc + 1;
       }
       return acc;
@@ -185,7 +217,8 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     }
   };
 
-  const startQuiz = () => {
+  const startQuiz = async (subjectName: string) => {
+    await loadQuestions(subjectName);
     setQuizStarted(true);
     setTimeLeft(300);
   };
@@ -250,12 +283,22 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     </div>
   );
 
-  // Show quiz screen
   if (quizStarted && subject) {
     const currentQuestion = questions[currentQ];
     const userAnswer = answered[currentQ];
     const finalScore = calculateScore();
     const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
+
+    if (questionsLoading || questions.length === 0) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+            <p className="text-sm text-gray-500 mt-3">Loading questions...</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="min-h-screen bg-gray-50" ref={containerRef}>
@@ -268,6 +311,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                 setAnswered({});
                 setCurrentQ(0);
                 setScore(0);
+                setQuestions([]);
               }}
               className="flex items-center gap-2"
             >
@@ -322,9 +366,10 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  {currentQuestion.options.map((option, idx) => {
-                    const isUserAnswer = userAnswer === idx;
-                    const isCorrect = currentQuestion.correct === idx;
+                  {convertToOptions(currentQuestion).map((option, idx) => {
+                    const answerLetter = String.fromCharCode(65 + idx);
+                    const isUserAnswer = userAnswer === answerLetter;
+                    const isCorrect = currentQuestion.correct_answer === answerLetter;
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
 
                     if (userAnswer !== undefined) {
@@ -464,7 +509,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     );
   }
 
-  // Show subject selection screen
   if (subject) {
     return (
       <div className="min-h-screen bg-gray-50 pb-20">
@@ -474,126 +518,46 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
               <ArrowLeft size={22} />
             </button>
             <div>
-              <h1 className="text-lg font-bold">{subject.charAt(0).toUpperCase() + subject.slice(1)}</h1>
-              <p className="text-[10px] text-yellow-300 font-semibold">Select Subject</p>
+              <h1 className="text-lg font-bold">{subject}</h1>
+              <p className="text-[10px] text-yellow-300 font-semibold">Premium Test</p>
             </div>
           </div>
         </header>
 
         <div className="p-4">
-          {subject === 'lucent' && (
-            <div className="space-y-3">
-              <button
-                onClick={() => { setLucentSubject('lucent-gk'); startQuiz(); }}
-                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
-              >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center text-white text-2xl">
-                  GK
-                </div>
-                <div className="flex-1 text-left">
-                  <h3 className="font-bold text-gray-900">Lucent GK</h3>
-                  <p className="text-xs text-gray-500 mt-1">{lucentSubjectWiseQuestions['lucent-gk'].length} questions</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => { setLucentSubject('lucent-science'); startQuiz(); }}
-                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
-              >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-400 to-green-500 flex items-center justify-center text-white text-2xl">
-                  SCI
-                </div>
-                <div className="flex-1 text-left">
-                  <h3 className="font-bold text-gray-900">Lucent Science</h3>
-                  <p className="text-xs text-gray-500 mt-1">{lucentSubjectWiseQuestions['lucent-science'].length} questions</p>
-                </div>
-              </button>
-            </div>
-          )}
-
-          {subject === 'ghatnachakra' && (
-            <div className="space-y-3">
-              <button
-                onClick={() => { setGhatnachakraSubject('ghatnachakra-history'); startQuiz(); }}
-                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
-              >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center text-white text-2xl">
-                  HIS
-                </div>
-                <div className="flex-1 text-left">
-                  <h3 className="font-bold text-gray-900">Ghatnachakra History</h3>
-                  <p className="text-xs text-gray-500 mt-1">{ghatnachakraQuestions['ghatnachakra-history'].length} questions</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => { setGhatnachakraSubject('ghatnachakra-geography'); startQuiz(); }}
-                className="w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 hover:shadow-lg transition-all"
-              >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 flex items-center justify-center text-white text-2xl">
-                  GEO
-                </div>
-                <div className="flex-1 text-left">
-                  <h3 className="font-bold text-gray-900">Ghatnachakra Geography</h3>
-                  <p className="text-xs text-gray-500 mt-1">{ghatnachakraQuestions['ghatnachakra-geography'].length} questions</p>
-                </div>
-              </button>
-            </div>
-          )}
-
-          {(subject === 'history' || subject === 'geography') && (
-            <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-2xl">
-                  {subject === 'history' ? 'HIS' : 'GEO'}
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {subject === 'history' ? 'History' : 'Geography'} Test
-                  </h2>
-                  <p className="text-sm text-gray-500">Free Practice Test</p>
-                </div>
+          <div className="bg-white rounded-2xl shadow-lg p-5 mb-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-2xl shadow">
+                {subject.charAt(0)}
               </div>
-
-              <div className="grid grid-cols-3 gap-3 mb-5">
-                <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-950">{questions.length}</p>
-                  <p className="text-xs text-gray-500">Questions</p>
-                </div>
-                <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-950">5 min</p>
-                  <p className="text-xs text-gray-500">Duration</p>
-                </div>
-                <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-950">{questions.length}</p>
-                  <p className="text-xs text-gray-500">Marks</p>
-                </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">{subject} Test</h2>
+                <p className="text-sm text-gray-500">Premium Practice Test</p>
               </div>
-
-              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-5">
-                <p className="text-sm font-bold text-yellow-800 mb-2">Instructions:</p>
-                <ul className="space-y-1.5 text-xs text-yellow-700">
-                  <li>Swipe UP/DOWN to navigate questions</li>
-                  <li>Tap to select your answer</li>
-                  <li>Green = Correct, Red = Wrong (auto shown)</li>
-                  <li>Timer starts automatically</li>
-                </ul>
-              </div>
-
-              <button
-                onClick={startQuiz}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
-              >
-                Start Test
-              </button>
             </div>
-          )}
+
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-5">
+              <p className="text-sm font-bold text-yellow-800 mb-2">Instructions:</p>
+              <ul className="space-y-1.5 text-xs text-yellow-700">
+                <li>• Swipe UP/DOWN to navigate questions</li>
+                <li>• Tap to select your answer</li>
+                <li>• Green = Correct, Red = Wrong</li>
+                <li>• Timer starts automatically</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={() => startQuiz(subject)}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors shadow-lg"
+            >
+              Start Test
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Main subject selection
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-gradient-to-r from-blue-950 to-blue-900 text-white sticky top-0 z-40 shadow-md">
@@ -612,9 +576,8 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
       <div className="p-4 pb-24 max-w-2xl mx-auto">
         <div className="space-y-4">
-          {/* Free Subjects */}
           <button
-            onClick={() => setSubject('history')}
+            onClick={() => setSubject('History')}
             className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-blue-200"
           >
             <div className="bg-blue-100 text-blue-700 p-3 rounded-xl flex-shrink-0">
@@ -622,12 +585,12 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
             </div>
             <div className="flex-1">
               <h4 className="font-bold text-gray-900">History</h4>
-              <p className="text-xs text-gray-500 mt-1">Free - Practice test</p>
+              <p className="text-xs text-gray-600 mt-1">Premium history test series</p>
             </div>
           </button>
 
           <button
-            onClick={() => setSubject('geography')}
+            onClick={() => setSubject('Geography')}
             className="w-full flex items-start gap-4 bg-white rounded-2xl p-4 shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left border-2 border-teal-200"
           >
             <div className="bg-teal-100 text-teal-700 p-3 rounded-xl flex-shrink-0">
@@ -635,15 +598,14 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
             </div>
             <div className="flex-1">
               <h4 className="font-bold text-gray-900">Geography</h4>
-              <p className="text-xs text-gray-500 mt-1">Free - Practice test</p>
+              <p className="text-xs text-gray-600 mt-1">Premium geography test series</p>
             </div>
           </button>
 
-          {/* Paid Subjects */}
           <button
             onClick={() => {
               if (purchasedTests.lucent) {
-                setSubject('lucent');
+                setSubject('Lucent');
               } else {
                 setShowPaymentModal(true);
                 setSelectedPaidTest('lucent');
@@ -666,9 +628,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
             </div>
             <div className="flex flex-col items-end gap-1">
               {!purchasedTests.lucent && (
-                <>
-                  <span className="text-xl font-bold text-red-600">Rs 59</span>
-                </>
+                <span className="text-xl font-bold text-red-600">Rs 59</span>
               )}
             </div>
           </button>
@@ -676,7 +636,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
           <button
             onClick={() => {
               if (purchasedTests.ghatnachakra) {
-                setSubject('ghatnachakra');
+                setSubject('Ghatnachakra');
               } else {
                 setShowPaymentModal(true);
                 setSelectedPaidTest('ghatnachakra');
@@ -699,9 +659,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
             </div>
             <div className="flex flex-col items-end gap-1">
               {!purchasedTests.ghatnachakra && (
-                <>
-                  <span className="text-xl font-bold text-red-600">Rs 59</span>
-                </>
+                <span className="text-xl font-bold text-red-600">Rs 59</span>
               )}
             </div>
           </button>
