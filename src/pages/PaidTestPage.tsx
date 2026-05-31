@@ -135,27 +135,67 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const normalizeSubjectName = (subjectName: string): string => {
+    // Normalize subject names to match database values
+    if (subjectName.toLowerCase().includes('lucent')) return 'Lucent';
+    if (subjectName.toLowerCase().includes('ghatnachakra')) return 'Ghatnachakra';
+    return subjectName;
+  };
+
   const loadQuestions = async (subjectName: string) => {
+    console.log('=== PAID TEST DEBUG START ===');
+    console.log('1. Raw subjectName received:', subjectName);
+
+    // Normalize the subject name
+    const normalizedSubject = normalizeSubjectName(subjectName);
+    console.log('2. Normalized subjectName:', normalizedSubject);
+
     setQuestionsLoading(true);
     try {
-      const { data, error } = await supabase
+      console.log('3. Building Supabase query...');
+      const query = supabase
         .from('questions')
         .select('*')
         .eq('category', 'paid_test')
-        .eq('subject', subjectName);
+        .eq('subject', normalizedSubject);
+
+      console.log('4. Query:', {
+        table: 'questions',
+        filters: {
+          category: 'paid_test',
+          subject: normalizedSubject
+        }
+      });
+
+      const { data, error } = await query;
+
+      console.log('5. Query result:', {
+        data: data,
+        error: error,
+        dataLength: data?.length || 0
+      });
 
       if (error) {
-        console.error('Error loading questions:', error);
+        console.error('6. ERROR loading questions:', error);
+        setQuestionsLoading(false);
         return;
       }
 
-      if (data) {
+      if (data && data.length > 0) {
+        console.log('7. SUCCESS - Questions loaded:', data.length);
+        console.log('8. First question sample:', data[0]);
         setQuestions(data);
+      } else {
+        console.warn('7. WARNING - No questions found for subject:', normalizedSubject);
+        setQuestions([]);
       }
     } catch (error) {
-      console.error('Error fetching questions:', error);
+      console.error('9. EXCEPTION in loadQuestions:', error);
+      setQuestions([]);
     } finally {
+      console.log('10. Setting questionsLoading to false');
       setQuestionsLoading(false);
+      console.log('=== PAID TEST DEBUG END ===');
     }
   };
 
@@ -218,9 +258,22 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   };
 
   const startQuiz = async (subjectName: string) => {
+    console.log('=== START QUIZ CALLED ===');
+    console.log('Subject name passed:', subjectName);
+
+    // Reset all states before starting
+    setCurrentQ(0);
+    setAnswered({});
+    setScore(0);
+    setQuestions([]);
+    setShowResults(false);
+
     await loadQuestions(subjectName);
+
     setQuizStarted(true);
     setTimeLeft(300);
+
+    console.log('Quiz started flag set to true');
   };
 
   const handleNext = () => {
@@ -284,12 +337,14 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
   );
 
   if (quizStarted && subject) {
-    const currentQuestion = questions[currentQ];
-    const userAnswer = answered[currentQ];
-    const finalScore = calculateScore();
-    const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
+    console.log('=== QUIZ RENDER CHECK ===');
+    console.log('questionsLoading:', questionsLoading);
+    console.log('questions.length:', questions.length);
+    console.log('subject:', subject);
+    console.log('quizStarted:', quizStarted);
 
-    if (questionsLoading || questions.length === 0) {
+    if (questionsLoading) {
+      console.log('SHOWING LOADING SPINNER - questionsLoading is true');
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
@@ -299,6 +354,33 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
         </div>
       );
     }
+
+    if (!questionsLoading && questions.length === 0) {
+      console.log('SHOWING NO QUESTIONS MESSAGE');
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-lg font-bold text-gray-700 mb-2">No Questions Available</p>
+            <p className="text-sm text-gray-500 mb-4">No questions found for {subject}</p>
+            <button
+              onClick={() => {
+                setQuizStarted(false);
+                setQuestions([]);
+              }}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    console.log('SHOWING QUIZ SCREEN - Questions loaded successfully');
+    const currentQuestion = questions[currentQ];
+    const userAnswer = answered[currentQ];
+    const finalScore = calculateScore();
+    const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
 
     return (
       <div className="min-h-screen bg-gray-50" ref={containerRef}>
