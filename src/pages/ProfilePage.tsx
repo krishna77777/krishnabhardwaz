@@ -5,6 +5,7 @@ import { supabase } from '../utils/supabase';
 
 interface ProfilePageProps {
   onBack: () => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface PurchasedTest {
@@ -13,7 +14,7 @@ interface PurchasedTest {
   created_at: string;
 }
 
-export default function ProfilePage({ onBack }: ProfilePageProps) {
+export default function ProfilePage({ onBack, onNavigate }: ProfilePageProps) {
   const { user } = useAuth();
   const [purchasedTests, setPurchasedTests] = useState<PurchasedTest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,6 +225,25 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
             </div>
           </div>
         )}
+
+        {/* Footer Links */}
+        <div className="bg-white rounded-2xl shadow-lg p-5 mt-4">
+          <h3 className="text-base font-bold text-gray-900 mb-4">Resources</h3>
+          <div className="space-y-3">
+            <button
+              onClick={() => onNavigate?.('terms')}
+              className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors text-sm font-medium text-gray-700 hover:text-blue-700"
+            >
+              Terms of Service
+            </button>
+            <button
+              onClick={() => onNavigate?.('privacy')}
+              className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors text-sm font-medium text-gray-700 hover:text-blue-700"
+            >
+              Privacy Policy
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

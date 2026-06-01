@@ -9,10 +9,12 @@ import LivePage from './pages/LivePage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
 import BottomNav from './components/BottomNav';
 import { useAuth } from './contexts/AuthContext';
 
-type Page = 'home' | 'paid-test' | 'free-test' | 'free-quiz' | 'current-affairs' | 'notes-pdf' | 'about' | 'my-purchase' | 'ai' | 'live' | 'mock-test' | 'practice-set' | 'previous-year' | 'profile';
+type Page = 'home' | 'paid-test' | 'free-test' | 'free-quiz' | 'current-affairs' | 'notes-pdf' | 'about' | 'my-purchase' | 'ai' | 'live' | 'mock-test' | 'practice-set' | 'previous-year' | 'profile' | 'terms' | 'privacy';
 type AuthPage = 'login' | 'register';
 
 const bottomNavPages: Page[] = ['home', 'my-purchase', 'ai', 'live'];
@@ -102,7 +104,15 @@ export default function App() {
   }
 
   if (page === 'profile') {
-    return <ProfilePage onBack={goHome} />;
+    return <ProfilePage onBack={goHome} onNavigate={handleNavigate} />;
+  }
+
+  if (page === 'terms') {
+    return <TermsPage onBack={goHome} />;
+  }
+
+  if (page === 'privacy') {
+    return <PrivacyPage onBack={goHome} />;
   }
 
   const titleMap: Record<string, string> = {
