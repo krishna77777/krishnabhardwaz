@@ -354,14 +354,11 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                     const isUserAnswer = userAnswer === answerLetter;
                     const isCorrect = currentQuestion.correct_answer === answerLetter;
 
-                    // ✅ Only reveal correct/wrong AFTER submit
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
-                    if (showResults) {
-                      if (isCorrect) {
-                        optionStyle = 'border-2 border-green-500 bg-green-50';
-                      } else if (isUserAnswer && !isCorrect) {
-                        optionStyle = 'border-2 border-red-500 bg-red-50';
-                      }
+                    if (isCorrect && isUserAnswer) {
+                      optionStyle = 'border-2 border-green-500 bg-green-50';
+                    } else if (isUserAnswer && !isCorrect) {
+                      optionStyle = 'border-2 border-red-500 bg-red-50';
                     } else if (isUserAnswer) {
                       optionStyle = 'border-2 border-blue-500 bg-blue-50';
                     }
@@ -372,16 +369,11 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                         onClick={() => handleAnswer(currentQ, idx)}
                         className={`w-full text-left px-5 py-4 rounded-xl transition-all flex items-center gap-3 ${optionStyle}`}
                       >
-                        {/* ✅ Circle badge: green/red only after submit */}
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                          showResults
+                          isUserAnswer
                             ? isCorrect
                               ? 'bg-green-500 text-white'
-                              : isUserAnswer && !isCorrect
-                              ? 'bg-red-500 text-white'
-                              : 'bg-gray-200 text-gray-700'
-                            : isUserAnswer
-                            ? 'bg-blue-500 text-white'
+                              : 'bg-red-500 text-white'
                             : 'bg-blue-100 text-blue-700'
                         }`}>
                           {String.fromCharCode(65 + idx)}
@@ -389,13 +381,12 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
                         <span className="text-sm font-medium flex-1">{option}</span>
 
-                        {/* ✅ CORRECT / WRONG labels only after submit */}
-                        {showResults && isCorrect && (
+                        {isUserAnswer && isCorrect && (
                           <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">
                             ✓ CORRECT
                           </span>
                         )}
-                        {showResults && isUserAnswer && !isCorrect && (
+                        {isUserAnswer && !isCorrect && (
                           <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">
                             ✗ WRONG
                           </span>
