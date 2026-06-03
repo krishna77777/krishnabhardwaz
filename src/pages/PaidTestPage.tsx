@@ -450,7 +450,6 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                 <div className="space-y-3">
                   {convertToOptions(currentQuestion).map((option, idx) => {
                     const answerLetter = String.fromCharCode(65 + idx);
-                    const isUserAnswer = userAnswer === answerLetter;
                     const isCorrect = currentQuestion.correct_answer === answerLetter;
 
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
