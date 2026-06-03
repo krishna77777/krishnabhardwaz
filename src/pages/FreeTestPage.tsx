@@ -355,12 +355,12 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                     const isCorrect = currentQuestion.correct_answer === answerLetter;
 
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
-                    if (isCorrect && isUserAnswer) {
-                      optionStyle = 'border-2 border-green-500 bg-green-50';
-                    } else if (isUserAnswer && !isCorrect) {
-                      optionStyle = 'border-2 border-red-500 bg-red-50';
-                    } else if (isUserAnswer) {
-                      optionStyle = 'border-2 border-blue-500 bg-blue-50';
+                    if (userAnswer !== undefined) {
+                      if (isCorrect) {
+                        optionStyle = 'border-2 border-green-500 bg-green-50';
+                      } else {
+                        optionStyle = 'border-2 border-red-500 bg-red-50';
+                      }
                     }
 
                     return (
@@ -370,7 +370,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                         className={`w-full text-left px-5 py-4 rounded-xl transition-all flex items-center gap-3 ${optionStyle}`}
                       >
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                          isUserAnswer
+                          userAnswer !== undefined
                             ? isCorrect
                               ? 'bg-green-500 text-white'
                               : 'bg-red-500 text-white'
@@ -381,12 +381,12 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
 
                         <span className="text-sm font-medium flex-1">{option}</span>
 
-                        {isUserAnswer && isCorrect && (
+                        {userAnswer !== undefined && isCorrect && (
                           <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">
                             ✓ CORRECT
                           </span>
                         )}
-                        {isUserAnswer && !isCorrect && (
+                        {userAnswer !== undefined && !isCorrect && (
                           <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">
                             ✗ WRONG
                           </span>
