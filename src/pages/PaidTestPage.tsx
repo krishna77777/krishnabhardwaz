@@ -456,7 +456,7 @@ export default function PaidTestPage({ onBack }: PaidTestPageProps) {
                     let optionStyle = 'border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50';
                     if (isCorrect && isUserAnswer) {
                       optionStyle = 'border-2 border-green-500 bg-green-50';
-                    } else if (isUserAnswer && !isCorrect) {
+                    } else if (isUserAnswer && !isIncorrect) {
                       optionStyle = 'border-2 border-red-500 bg-red-50';
                     } else if (isUserAnswer) {
                       optionStyle = 'border-2 border-blue-500 bg-blue-50';
